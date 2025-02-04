@@ -4,190 +4,161 @@ using System.Windows.Forms;
 
 public class ResizableRectangle : Control
 {
-    private bool isDragging = false;
-    private Point clickOffset;
-
-    private bool isResizing = false;
-    private ResizeDirection resizeDirection;
-    private const int handleSize = 10;
-
-    public ResizableRectangle()
-    {
-        this.SetStyle(ControlStyles.ResizeRedraw, true);
-        this.DoubleBuffered = true;
-        this.BackColor = Color.LightBlue;
-        this.Cursor = Cursors.Default;
-    }
-
-    protected override void OnMouseDown(MouseEventArgs e)
-    {
-        if (e.Button == MouseButtons.Left)
-        {
-            resizeDirection = GetResizeDirection(e.Location);
-            if (resizeDirection != ResizeDirection.None)
-            {
-                isResizing = true;
-                clickOffset = e.Location;
-                this.Cursor = GetCursor(resizeDirection);
-            }
-            else
-            {
-                isDragging = true;
-                clickOffset = e.Location;
-                this.Cursor = Cursors.SizeAll;
-            }
-        }
-        base.OnMouseDown(e);
-    }
-
-    protected override void OnMouseMove(MouseEventArgs e)
-    {
-        if (isDragging)
-        {
-            this.Left += e.X - clickOffset.X;
-            this.Top += e.Y - clickOffset.Y;
-        }
-        else if (isResizing)
-        {
-            ResizeRectangle(e.Location);
-        }
-        else
-        {
-            resizeDirection = GetResizeDirection(e.Location);
-            this.Cursor = GetCursor(resizeDirection);
-        }
-        base.OnMouseMove(e);
-    }
-
-    protected override void OnMouseUp(MouseEventArgs e)
-    {
-        if (e.Button == MouseButtons.Left)
-        {
-            isDragging = false;
-            isResizing = false;
-            this.Cursor = Cursors.Default;
-        }
-        base.OnMouseUp(e);
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        // Draw resize handles
-        DrawResizeHandles(e.Graphics);
-    }
+    private bool _dragging = false;
+    private Point _dragStart;
+    private bool _resizing = false;
+    private Rectangle _resizeZone;
+    private int _resizeMargin = 8;
+    private Point _resizeStart;
+    private Size _originalSize;
+    private Point _originalLocation;
+    private ResizeDirection _resizeDirection;
 
     private enum ResizeDirection
     {
-        None,
-        TopLeft,
-        Top,
-        TopRight,
-        Right,
-        BottomRight,
-        Bottom,
-        BottomLeft,
-        Left
+        None, Top, Bottom, Left, Right,
+        TopLeft, TopRight, BottomLeft, BottomRight
+    }
+
+    public ResizableRectangle()
+    {
+        this.BackColor = Color.LightBlue;
+        this.Size = new Size(100, 100);
+        this.MouseDown += OnMouseDown;
+        this.MouseMove += OnMouseMove;
+        this.MouseUp += OnMouseUp;
+        this.Resize += (s, e) => UpdateResizeZone();
+    }
+
+    private void UpdateResizeZone()
+    {
+        // 四辺と四隅をリサイズゾーンとして設定
+    }
+
+    private void OnMouseDown(object sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            _resizeDirection = GetResizeDirection(e.Location);
+
+            if (_resizeDirection != ResizeDirection.None)
+            {
+                _resizing = true;
+                _resizeStart = Cursor.Position;
+                _originalSize = this.Size;
+                _originalLocation = this.Location;
+            }
+            else
+            {
+                _dragging = true;
+                _dragStart = e.Location;
+            }
+        }
+    }
+
+    private void OnMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_resizing)
+        {
+            ResizeControl();
+        }
+        else if (_dragging)
+        {
+            MoveControl();
+        }
+        else
+        {
+            // カーソルの変更
+            this.Cursor = GetCursorForDirection(GetResizeDirection(e.Location));
+        }
+    }
+
+    private void OnMouseUp(object sender, MouseEventArgs e)
+    {
+        _dragging = false;
+        _resizing = false;
     }
 
     private ResizeDirection GetResizeDirection(Point location)
     {
-        if (new Rectangle(0, 0, handleSize, handleSize).Contains(location)) return ResizeDirection.TopLeft;
-        if (new Rectangle(handleSize, 0, this.Width - 2 * handleSize, handleSize).Contains(location)) return ResizeDirection.Top;
-        if (new Rectangle(this.Width - handleSize, 0, handleSize, handleSize).Contains(location)) return ResizeDirection.TopRight;
-        if (new Rectangle(this.Width - handleSize, handleSize, handleSize, this.Height - 2 * handleSize).Contains(location)) return ResizeDirection.Right;
-        if (new Rectangle(this.Width - handleSize, this.Height - handleSize, handleSize, handleSize).Contains(location)) return ResizeDirection.BottomRight;
-        if (new Rectangle(handleSize, this.Height - handleSize, this.Width - 2 * handleSize, handleSize).Contains(location)) return ResizeDirection.Bottom;
-        if (new Rectangle(0, this.Height - handleSize, handleSize, handleSize).Contains(location)) return ResizeDirection.BottomLeft;
-        if (new Rectangle(0, handleSize, handleSize, this.Height - 2 * handleSize).Contains(location)) return ResizeDirection.Left;
+        bool left = location.X <= _resizeMargin;
+        bool right = location.X >= this.Width - _resizeMargin;
+        bool top = location.Y <= _resizeMargin;
+        bool bottom = location.Y >= this.Height - _resizeMargin;
+
+        if (top && left) return ResizeDirection.TopLeft;
+        if (top && right) return ResizeDirection.TopRight;
+        if (bottom && left) return ResizeDirection.BottomLeft;
+        if (bottom && right) return ResizeDirection.BottomRight;
+        if (top) return ResizeDirection.Top;
+        if (bottom) return ResizeDirection.Bottom;
+        if (left) return ResizeDirection.Left;
+        if (right) return ResizeDirection.Right;
+
         return ResizeDirection.None;
     }
 
-    private void ResizeRectangle(Point location)
+    private Cursor GetCursorForDirection(ResizeDirection direction)
     {
-        int dx = location.X - clickOffset.X;
-        int dy = location.Y - clickOffset.Y;
-
-        switch (resizeDirection)
+        return direction switch
         {
-            case ResizeDirection.TopLeft:
-                this.Left += dx;
-                this.Top += dy;
-                this.Width -= dx;
-                this.Height -= dy;
-                break;
-            case ResizeDirection.Top:
-                this.Top += dy;
-                this.Height -= dy;
-                break;
-            case ResizeDirection.TopRight:
-                this.Top += dy;
-                this.Width += dx;
-                this.Height -= dy;
-                break;
-            case ResizeDirection.Right:
-                this.Width += dx;
-                break;
-            case ResizeDirection.BottomRight:
-                this.Width += dx;
-                this.Height += dy;
-                break;
-            case ResizeDirection.Bottom:
-                this.Height += dy;
-                break;
-            case ResizeDirection.BottomLeft:
-                this.Left += dx;
-                this.Width -= dx;
-                this.Height += dy;
-                break;
-            case ResizeDirection.Left:
-                this.Left += dx;
-                this.Width -= dx;
-                break;
-        }
-        clickOffset = location;
+            ResizeDirection.TopLeft or ResizeDirection.BottomRight => Cursors.SizeNWSE,
+            ResizeDirection.TopRight or ResizeDirection.BottomLeft => Cursors.SizeNESW,
+            ResizeDirection.Top or ResizeDirection.Bottom => Cursors.SizeNS,
+            ResizeDirection.Left or ResizeDirection.Right => Cursors.SizeWE,
+            _ => Cursors.Hand
+        };
     }
 
-    private Cursor GetCursor(ResizeDirection direction)
+    private void MoveControl()
     {
-        switch (direction)
-        {
-            case ResizeDirection.TopLeft:
-            case ResizeDirection.BottomRight:
-                return Cursors.SizeNWSE;
-            case ResizeDirection.TopRight:
-            case ResizeDirection.BottomLeft:
-                return Cursors.SizeNESW;
-            case ResizeDirection.Top:
-            case ResizeDirection.Bottom:
-                return Cursors.SizeNS;
-            case ResizeDirection.Left:
-            case ResizeDirection.Right:
-                return Cursors.SizeWE;
-            default:
-                return Cursors.Default;
-        }
+        if (Parent == null) return;
+
+        Point newLocation = this.Parent.PointToClient(Cursor.Position);
+        newLocation.Offset(-_dragStart.X, -_dragStart.Y);
+
+        // 親の範囲内に制限
+        newLocation.X = Math.Max(0, Math.Min(Parent.Width - this.Width, newLocation.X));
+        newLocation.Y = Math.Max(0, Math.Min(Parent.Height - this.Height, newLocation.Y));
+
+        this.Location = newLocation;
     }
 
-    private void DrawResizeHandles(Graphics g)
+    private void ResizeControl()
     {
-        Brush brush = Brushes.DarkBlue;
+        if (Parent == null) return;
 
-        // Top-left
-        g.FillRectangle(brush, 0, 0, handleSize, handleSize);
-        // Top
-        g.FillRectangle(brush, handleSize, 0, this.Width - 2 * handleSize, handleSize);
-        // Top-right
-        g.FillRectangle(brush, this.Width - handleSize, 0, handleSize, handleSize);
-        // Right
-        g.FillRectangle(brush, this.Width - handleSize, handleSize, handleSize, this.Height - 2 * handleSize);
-        // Bottom-right
-        g.FillRectangle(brush, this.Width - handleSize, this.Height - handleSize, handleSize, handleSize);
-        // Bottom
-        g.FillRectangle(brush, handleSize, this.Height - handleSize, this.Width - 2 * handleSize, handleSize);
-        // Bottom-left
-        g.FillRectangle(brush, 0, this.Height - handleSize, handleSize, handleSize);
-        // Left
-        g.FillRectangle(brush, 0, handleSize, handleSize, this.Height - 2 * handleSize);
+        Point delta = new Point(Cursor.Position.X - _resizeStart.X, Cursor.Position.Y - _resizeStart.Y);
+        int newWidth = _originalSize.Width;
+        int newHeight = _originalSize.Height;
+        int newX = _originalLocation.X;
+        int newY = _originalLocation.Y;
+
+        if (_resizeDirection.HasFlag(ResizeDirection.Left))
+        {
+            newX = Math.Max(0, _originalLocation.X + delta.X);
+            newWidth = Math.Max(20, _originalSize.Width - delta.X);
+        }
+        else if (_resizeDirection.HasFlag(ResizeDirection.Right))
+        {
+            newWidth = Math.Max(20, _originalSize.Width + delta.X);
+        }
+
+        if (_resizeDirection.HasFlag(ResizeDirection.Top))
+        {
+            newY = Math.Max(0, _originalLocation.Y + delta.Y);
+            newHeight = Math.Max(20, _originalSize.Height - delta.Y);
+        }
+        else if (_resizeDirection.HasFlag(ResizeDirection.Bottom))
+        {
+            newHeight = Math.Max(20, _originalSize.Height + delta.Y);
+        }
+
+        // 親の範囲内に制限
+        newWidth = Math.Min(newWidth, Parent.Width - newX);
+        newHeight = Math.Min(newHeight, Parent.Height - newY);
+
+        this.Location = new Point(newX, newY);
+        this.Size = new Size(newWidth, newHeight);
     }
 }
